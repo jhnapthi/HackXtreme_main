@@ -1,0 +1,26 @@
+[
+  {
+    "id": "e8b5fd63-63f3-4265-987b-ae435b08dc05",
+    "headline": "India - Avalanches (IMD, media) (ECHO Daily Flash of 30 March 2026)",
+    "mode": "eco",
+    "severity": 3,
+    "confidence": 0.9,
+    "is_verified": true,
+    "source": "Live Agent Pipeline",
+    "timestamp": "2026-03-30T16:51:02.015608",
+    "analysis": "**Event Analysis**\n\n**1. Event Severity and Geographic Scope:**\nThe avalanches in India have caused significant damage and displacement, affecting a moderate-sized geographic area. I estimate the severity as **Severity: 3** out of 5, considering the scale of destruction and the number of people affected.\n\n**2. Secondary Risks:**\nThe avalanches have triggered several secondary risks, including:\n\n* Landslides and rockfalls in the affected regions, posing a threat to settlements and infrastructure.\n* Potential disruptions to water and food supplies, exacerbating the humanitarian crisis.\n* Health risks due to the exposure of people to harsh winter conditions, cold, and potential injuries.\n\n**3. Immediate Safety and Evacuation Recommendations:**\nGiven the severity of the situation, I strongly r",
+    "convergence_warning": null
+  },
+  {
+    "id": "315747b4-2261-43d7-a482-2b652cd337e8",
+    "headline": "Apart from Indian vessels,10 foreign-flagged tankers with oil, gas bound for India are stranded in Persian Gulf",
+    "mode": "supply",
+    "severity": 4,
+    "confidence": 0.8,
+    "is_verified": true,
+    "source": "Live Agent Pipeline",
+    "timestamp": "2026-03-30T14:27:07.714726",
+    "analysis": "**Supply Chain and Economic Risk Analysis**\n\n**Affected Commodities, Regions, or Industries:**\n\n* Oil and Gas: With 10 foreign-flagged tankers stranded in the Persian Gulf, there is a significant risk of shortages and price spikes in the oil and gas markets.\n* Indian Economy: As India is a major importer of oil and gas, this event could have a direct impact on the Indian economy, particularly on industries that rely heavily on these commodities.\n\n**Downstream Cascading Effects:**\n\n* Shortages: The stranded tankers may lead to a shortage of oil and gas supplies in India, which could impact industries such as transportation, manufacturing, and power generation.\n* Price Spikes: The shortage could lead to price increases for oil and gas, which could have a ripple effect on the entire economy.\n",
+    "convergence_warning": null
+  }
+]
