@@ -107,21 +107,21 @@ async function loadAlerts(mode) {
 
   let alerts = [];
 
-    if (USE_API) {
-      try {
-        const resp = await fetch(`${API_BASE}/alerts?mode=${mode}&limit=15`);
-        const data = await resp.json();
-        alerts = data.alerts || [];
-      } catch (e) {
-        console.warn('API error', e);
-      }
+  if (USE_API) {
+    try {
+      const resp = await fetch(`${API_BASE}/alerts?mode=${mode}&limit=15`);
+      const data = await resp.json();
+      alerts = data.alerts || [];
+    } catch (e) {
+      console.warn('API error', e);
     }
-    
-    state.alerts = alerts;
-    renderAlerts(alerts);
-    checkConvergence(alerts);
-    updateMiniStats();
   }
+
+  state.alerts = alerts;
+  renderAlerts(alerts);
+  checkConvergence(alerts);
+  updateMiniStats();
+}
 
 function renderAlerts(alerts) {
   const container = document.getElementById('alerts-container');

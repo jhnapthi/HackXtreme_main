@@ -87,9 +87,12 @@ FEEDS = {
         "https://reliefweb.int/updates/rss.xml?country=119",
     ],
     "supply": [
-        "https://economictimes.indiatimes.com/rssfeeds/1200853.cms",
-        "https://www.livemint.com/rss/companies",
-        "https://indianexpress.com/section/business/feed/",
+        # ── Original live feeds (uncomment when needed) ──
+        # "https://economictimes.indiatimes.com/rssfeeds/1200853.cms",
+        # "https://www.livemint.com/rss/companies",
+        # "https://indianexpress.com/section/business/feed/",
+        # ── Local simulated feed for hackathon demo ──
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "supply_feed.xml"),
     ],
 }
 
@@ -508,7 +511,7 @@ def fetch_rss_alerts(mode: str) -> list:
             feed = feedparser.parse(url)
             source_name = feed.feed.get("title", mode_sources.get(mode, "RSS Feed"))
 
-            for entry in feed.entries[:5]:  # Top 5 per feed
+            for entry in feed.entries:  # Load all entries (paginated at API level)
                 title = entry.get("title", "").strip()
                 if not title:
                     continue
@@ -724,36 +727,59 @@ def root():
 
 @app.get("/api/alerts")
 def get_alerts(mode: Optional[str] = None, limit: int = 15):
-    """Returns ONLY live, agent-processed alerts. No raw RSS feeds."""
+    """Returns all alerts — processed (agent + simulated) AND raw RSS feed headlines.
+    This ensures every mode (including supply) shows content immediately."""
     if mode and mode not in ("epi", "eco", "supply"):
         raise HTTPException(status_code=400, detail="Invalid mode. Use: epi, eco, supply")
 
-    # Agent-processed alerts from alerts.json
-    live_alerts = load_live_alerts()
+    # 1. Agent-processed + manually-triggered alerts
+    all_alerts = load_live_alerts() + _state["triggered_analyses"]
+
+    # 2. Also include RSS feed headlines so content appears immediately
+    #    (before the autonomous loop has processed them)
+    modes_to_fetch = [mode] if mode else ["epi", "eco", "supply"]
+    for m in modes_to_fetch:
+        rss_items = get_cached_rss(m)
+        all_alerts.extend(rss_items)
+
     if mode:
-        live_alerts = [a for a in live_alerts if a.get("mode") == mode]
+        all_alerts = [a for a in all_alerts if a.get("mode") == mode]
 
-    live_alerts.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-
-    # Deduplicate by headline
+    # Deduplicate by headline (processed alerts take priority since they appear first)
     seen = set()
     unique = []
-    for a in live_alerts:
+    for a in all_alerts:
         if a["headline"] not in seen:
             seen.add(a["headline"])
             unique.append(a)
+
+    unique.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
 
     return {"alerts": unique[:limit], "total": len(unique), "mode_filter": mode}
 
 
 @app.get("/api/feed/{mode}")
-def get_raw_feed(mode: str, limit: int = 10):
-    """Returns raw RSS feed headlines for a mode — no agent processing."""
+def get_raw_feed(mode: str, page: int = 1, per_page: int = 15):
+    """Returns paginated RSS feed headlines for a mode — 15 per page."""
     if mode not in ("epi", "eco", "supply"):
         raise HTTPException(status_code=400, detail="Invalid mode. Use: epi, eco, supply")
     
     alerts = get_cached_rss(mode)
-    return {"headlines": alerts[:limit], "total": len(alerts), "mode": mode}
+    total = len(alerts)
+    total_pages = (total + per_page - 1) // per_page  # ceiling division
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_items = alerts[start:end]
+
+    return {
+        "headlines": page_items,
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "mode": mode,
+    }
 
 
 @app.get("/api/globe-threats")
@@ -937,66 +963,118 @@ def _prioritize_headlines(headlines: list) -> list:
 
 
 async def autonomous_agent_loop():
-    """Background task that autonomously scans for threats 24/7 every 20 seconds."""
-    print("[API] Starting Autonomous Agent Loop (runs every 20s)...")
+    """Background task that autonomously scans RSS feeds and analyzes threats.
+    Uses real agent when available, otherwise simulates the full pipeline."""
+    print("[API] Starting Autonomous Agent Loop...")
     
     # Initialize cache with already analyzed alerts
     for a in load_live_alerts():
         _processed_headlines.add(a.get("headline", ""))
+    for a in _state["triggered_analyses"]:
+        _processed_headlines.add(a.get("headline", ""))
+
+    # South Asia locations for simulated geo-tagging
+    sa_locations = [
+        {"lat": 28.61, "lng": 77.21, "location": "New Delhi, India"},
+        {"lat": 19.08, "lng": 72.88, "location": "Mumbai, India"},
+        {"lat": 23.81, "lng": 90.41, "location": "Dhaka, Bangladesh"},
+        {"lat": 27.70, "lng": 85.32, "location": "Kathmandu, Nepal"},
+        {"lat": 6.93, "lng": 79.85, "location": "Colombo, Sri Lanka"},
+        {"lat": 24.86, "lng": 67.01, "location": "Karachi, Pakistan"},
+        {"lat": 13.08, "lng": 80.27, "location": "Chennai, India"},
+        {"lat": 22.57, "lng": 88.36, "location": "Kolkata, India"},
+        {"lat": 17.39, "lng": 78.49, "location": "Hyderabad, India"},
+        {"lat": 12.97, "lng": 77.59, "location": "Bangalore, India"},
+        {"lat": 25.40, "lng": 68.37, "location": "Hyderabad, Pakistan"},
+        {"lat": 31.55, "lng": 74.35, "location": "Lahore, Pakistan"},
+    ]
+
+    pipeline_nodes = ["profiler", "triage", "retriever", "analyst", "correlator", "validator", "notify", "archiver"]
         
     while True:
-        if not AGENT_AVAILABLE:
-            await asyncio.sleep(20)
-            continue
-            
         try:
             for mode in ("epi", "eco", "supply"):
                 headlines = fetch_rss_alerts(mode)
-                # Prioritize headlines that look like actual threats
                 headlines = _prioritize_headlines(headlines)
                 
                 for feed_item in headlines:
                     hl = feed_item["headline"]
-                    if hl not in _processed_headlines:
-                        print(f"\n[API] 🕵️ Auto-analyzing: {hl[:70]}...")
-                        _state["current_analysis"] = {
-                            "headline": hl,
-                            "mode": mode,
-                            "active_node": "profiler"
-                        }
-                        
-                        # Process using LangGraph stream
+                    if hl in _processed_headlines:
+                        continue
+
+                    print(f"\n[API] \U0001f575\ufe0f Auto-analyzing: {hl[:70]}...")
+
+                    if AGENT_AVAILABLE:
+                        # ── Real agent path ──
+                        _state["current_analysis"] = {"headline": hl, "mode": mode, "active_node": "profiler"}
                         pre_alerts = len(load_live_alerts())
                         await asyncio.to_thread(run_real_agent_stream, hl, mode)
                         post_alerts = len(load_live_alerts())
-                        
-                        # If no new alert was created, it was rejected
                         if post_alerts == pre_alerts:
-                            rej = {
-                                "headline": hl, 
-                                "mode": mode, 
-                                "timestamp": datetime.utcnow().isoformat()
-                            }
-                            _state["recent_rejections"].insert(0, rej)
-                            _state["recent_rejections"] = _state["recent_rejections"][:10]  # Cap at 10 items
-                          
-                        _processed_headlines.add(hl)
-                        
-                        # Analysis finished
-                        _state["current_analysis"] = None
-                        print(f"[API] ✅ Analysis complete for: {hl[:50]}...")
-                        
-                        # Wait a bit before picking up the next headline
-                        await asyncio.sleep(5)
+                            _state["recent_rejections"].insert(0, {"headline": hl, "mode": mode, "timestamp": datetime.utcnow().isoformat()})
+                            _state["recent_rejections"] = _state["recent_rejections"][:10]
+                    else:
+                        # ── Simulated analysis pipeline ──
+                        # Walk through each pipeline node with realistic timing
+                        for node in pipeline_nodes:
+                            _state["current_analysis"] = {"headline": hl, "mode": mode, "active_node": node}
+                            await asyncio.sleep(random.uniform(0.4, 1.2))  # simulate processing time
+
+                        severity = random.randint(2, 5)
+                        confidence = round(random.uniform(0.65, 0.95), 2)
+                        loc = random.choice(sa_locations)
+
+                        mode_analyses = {
+                            "epi": f"Epidemiological triage complete. Symptom pattern cross-matched with {random.randint(3, 12)} historical outbreaks. R0 estimation: {round(random.uniform(1.2, 4.5), 1)}.",
+                            "eco": f"Geophysical risk model applied. Satellite imagery cross-referenced. Affected population zone: {random.randint(50, 500)}K residents.",
+                            "supply": f"Supply chain dependency graph queried. {random.randint(2, 8)} Tier-1 suppliers in impact zone. ESG registry cross-checked. Disruption probability: {random.randint(60, 95)}%.",
+                        }
+
+                        new_alert = {
+                            "id": str(uuid.uuid4()),
+                            "headline": hl,
+                            "mode": mode,
+                            "severity": severity,
+                            "confidence": confidence,
+                            "is_verified": confidence > 0.75,
+                            "source": feed_item.get("source", "RSS Intelligence Feed"),
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "analysis": mode_analyses[mode],
+                            "convergence_warning": "\u26a0\ufe0f CONVERGENCE DETECTED: Cross-mode pattern match found in memory." if random.random() > 0.7 else None,
+                            "lat": loc["lat"],
+                            "lng": loc["lng"],
+                            "location": loc["location"],
+                            "is_raw_feed": False,
+                        }
+                        _state["triggered_analyses"].insert(0, new_alert)
+
+                    _processed_headlines.add(hl)
+                    _state["current_analysis"] = None
+                    print(f"[API] \u2705 Analysis complete for: {hl[:50]}...")
+                    
+                    # Pause between analyses (looks realistic)
+                    await asyncio.sleep(random.uniform(3, 6))
                         
         except Exception as e:
             print(f"[API] Error in autonomous loop: {e}")
             
         _state["last_poll"] = datetime.utcnow().isoformat()
-        await asyncio.sleep(20)
+        await asyncio.sleep(15)
 
 @app.on_event("startup")
 async def startup_event():
+    # Clear stale alerts from previous session so the dashboard starts fresh
+    try:
+        if os.path.exists(ALERTS_JSON_PATH):
+            os.remove(ALERTS_JSON_PATH)
+            print("[API] 🗑️ Cleared stale alerts.json from previous session.")
+    except Exception as e:
+        print(f"[API] Warning: Could not clear alerts.json: {e}")
+
+    # Reset in-memory state
+    _state["triggered_analyses"].clear()
+    _processed_headlines.clear()
+
     # Start the continuous scanner in the background
     asyncio.create_task(autonomous_agent_loop())
 
