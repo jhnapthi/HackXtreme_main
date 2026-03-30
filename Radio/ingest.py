@@ -93,9 +93,11 @@ def process_feed(url: str):
                 "threat_analysis": "",
                 "severity_level": 0,
                 "confidence_score": 0.0,
+                "convergence_warning": "",
                 "verification_results": "",
                 "is_verified": False,
                 "relevance_score": 0.0,
+                "retry_count": 0,
                 "context": [],
                 "logs": [],
             }
