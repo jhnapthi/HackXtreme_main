@@ -720,14 +720,106 @@ document.addEventListener('DOMContentLoaded', () => {
     supply: 'Major semiconductor factory shutting down amid ESG audit — chip shortage feared',
   };
 
-  // Rotate placeholder hints every 5s
-  let hintIndex = 0;
-  const hintModes = ['epi', 'eco', 'supply'];
-  const triggerInput = document.getElementById('trigger-input');
-  if (triggerInput) {
-    setInterval(() => {
-      hintIndex = (hintIndex + 1) % 3;
-      triggerInput.placeholder = demoHints[hintModes[hintIndex]];
-    }, 5000);
+    // Rotate placeholder hints every 5s
+    let hintIndex = 0;
+    const hintModes = ['epi', 'eco', 'supply'];
+    const triggerInput = document.getElementById('trigger-input');
+    if (triggerInput) {
+      setInterval(() => {
+        hintIndex = (hintIndex + 1) % 3;
+        triggerInput.placeholder = demoHints[hintModes[hintIndex]];
+      }, 5000);
+    }
+  
+    // Init Infographics
+    initCharts();
+  });
+  
+  // ─── Chart.js Infographics ────────────────────────────────────────────────
+  let charts = {};
+  
+  function initCharts() {
+    if (typeof Chart === 'undefined') return;
+  
+    Chart.defaults.color = '#86868b';
+    Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+  
+    const ctxEpi = document.getElementById('chartEpi');
+    const ctxEco = document.getElementById('chartEco');
+    const ctxSupply = document.getElementById('chartSupply');
+  
+    if (ctxEpi) {
+      charts.epi = new Chart(ctxEpi, {
+        type: 'line',
+        data: {
+          labels: ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Day 7'],
+          datasets: [{
+            label: 'Estimated Cases',
+            data: [12, 19, 35, 76, 150, 240, 410],
+            borderColor: '#f43f5e',
+            backgroundColor: 'rgba(244,63,94,0.1)',
+            borderWidth: 3,
+            fill: true,
+            tension: 0.4,
+            pointBackgroundColor: '#f43f5e'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { grid: { color: 'rgba(0,0,0,0.05)' } },
+            x: { grid: { display: false } }
+          }
+        }
+      });
+    }
+  
+    if (ctxEco) {
+      charts.eco = new Chart(ctxEco, {
+        type: 'bar',
+        data: {
+          labels: ['S. America', 'S. Europe', 'W. USA', 'SE Asia', 'E. Africa'],
+          datasets: [{
+            label: 'Disaster Risk Index',
+            data: [7.2, 8.5, 9.1, 6.4, 7.8],
+            backgroundColor: 'rgba(245,158,11,0.8)',
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { grid: { color: 'rgba(0,0,0,0.05)' }, max: 10 },
+            x: { grid: { display: false } }
+          }
+        }
+      });
+    }
+  
+    if (ctxSupply) {
+      charts.supply = new Chart(ctxSupply, {
+        type: 'doughnut',
+        data: {
+          labels: ['Logistics', 'Raw Materials', 'Labor Shortage', 'Energy Costs'],
+          datasets: [{
+            data: [35, 25, 20, 20],
+            backgroundColor: ['#10b981', '#34d399', '#6ee7b7', '#a7f3d0'],
+            borderWidth: 0,
+            hoverOffset: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '65%',
+          plugins: {
+            legend: { position: 'right' }
+          }
+        }
+      });
+    }
   }
-});
