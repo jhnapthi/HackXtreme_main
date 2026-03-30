@@ -124,18 +124,19 @@ CORRELATION_THRESHOLD = float(os.getenv("CORRELATION_THRESHOLD", "0.75"))
 # ─── Agent State ──────────────────────────────────────────────────────────
 
 class AgentState(TypedDict):
-    news_item:           str
-    sentry_mode:         str            # "epi" | "eco" | "supply" | "general"
-    is_threat:           bool
-    threat_analysis:     str
-    severity_level:      int            # 1–5
-    confidence_score:    float          # 0.0–1.0
-    convergence_warning: str            # Cross-mode correlation result (Neural Moat)
+    news_item:            str
+    sentry_mode:          str            # "epi" | "eco" | "supply" | "general"
+    is_threat:            bool
+    threat_analysis:      str
+    severity_level:       int            # 1–5
+    confidence_score:     float          # 0.0–1.0
+    convergence_warning:  str            # Cross-mode correlation result (Neural Moat)
     verification_results: str
-    is_verified:         bool
-    relevance_score:     float
-    context:             List[str]
-    logs:                List[str]
+    is_verified:          bool
+    relevance_score:      float
+    retry_count:          int            # Reflection loop counter (max 1 retry)
+    context:              List[str]
+    logs:                 List[str]
 
 # ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -228,17 +229,35 @@ def retriever_node(state: AgentState):
 
 
 def analyst_node(state: AgentState):
-    """Agent B — Deep domain expert analysis with structured severity/confidence output."""
-    news       = state['news_item']
-    mode       = state.get('sentry_mode', 'general')
-    context_str = "\n".join(state.get('context', [])) or "No historical context available."
-    analysis   = ""
+    """Agent B — Deep domain expert analysis with structured severity/confidence output.
+    On retry (reflection loop), it receives the validator's search results as new context.
+    """
+    news          = state['news_item']
+    mode          = state.get('sentry_mode', 'general')
+    context_str   = "\n".join(state.get('context', [])) or "No historical context available."
+    retry_count   = state.get('retry_count', 0)
+    verification  = state.get('verification_results', '')
+    analysis      = ""
 
     role_prompt = ANALYST_PROMPTS.get(mode, ANALYST_PROMPTS['general'])
+
+    # On reflection retry, inject the validator's search results so the analyst
+    # can reconsider its conclusion with real-world evidence.
+    reflection_block = ""
+    if retry_count > 0 and verification:
+        reflection_block = (
+            f"\n⚠️ REFLECTION PASS {retry_count}: Your previous analysis was flagged as UNVERIFIED.\n"
+            f"The following real-world search results were found by the Validator:\n"
+            f"{verification}\n\n"
+            f"Revise your analysis accordingly. If the evidence contradicts the threat, "
+            f"lower severity. If it supports it, maintain or raise severity.\n"
+        )
+
     prompt = (
         f"{role_prompt}\n\n"
-        f"HISTORICAL CONTEXT:\n{context_str}\n\n"
-        f"NEW EVENT:\n{news}"
+        f"HISTORICAL CONTEXT:\n{context_str}\n"
+        f"{reflection_block}\n"
+        f"EVENT:\n{news}"
     )
     try:
         analysis = analyst_llm.invoke(prompt).content
@@ -249,12 +268,13 @@ def analyst_node(state: AgentState):
         )
 
     severity, confidence = parse_severity_confidence(analysis)
-    print(f"[Analyst] Severity={severity} Confidence={confidence:.2f}")
+    pass_label = f"(Reflection #{retry_count})" if retry_count > 0 else ""
+    print(f"[Analyst] {pass_label} Severity={severity} Confidence={confidence:.2f}")
     return {
         "threat_analysis":  analysis,
         "severity_level":   severity,
         "confidence_score": confidence,
-        "logs": state.get('logs', []) + [f"Analyst [{mode}]: Severity={severity} Confidence={confidence:.2f}"],
+        "logs": state.get('logs', []) + [f"Analyst [{mode}]{pass_label}: Severity={severity} Confidence={confidence:.2f}"],
     }
 
 
@@ -438,9 +458,21 @@ def decide_to_analyze(state: AgentState) -> Literal["analyze", "end"]:
     return "end"
 
 
-def decide_to_notify(state: AgentState) -> Literal["notify", "end"]:
+MAX_RETRIES = 1  # How many times the analyst can reflect before giving up
+
+def decide_to_notify(state: AgentState) -> Literal["notify", "reflect", "end"]:
+    """3-way router after validation:
+    - verified         → notify the stakeholder
+    - unverified + retries left → reflect (send back to analyst with new context)
+    - unverified + no retries  → end (archive silently)
+    """
     if state['is_verified']:
         return "notify"
+    retry_count = state.get('retry_count', 0)
+    if retry_count < MAX_RETRIES:
+        print(f"[Router] Unverified. Sending back to analyst for reflection (retry {retry_count + 1}/{MAX_RETRIES})...")
+        return "reflect"
+    print("[Router] Unverified after max retries. Archiving silently.")
     return "end"
 
 # ─── Build the LangGraph ──────────────────────────────────────────────────
@@ -470,11 +502,21 @@ workflow.add_edge("retriever",  "analyst")
 workflow.add_edge("analyst",    "correlator")   # analyst → correlator (Neural Moat)
 workflow.add_edge("correlator", "validator")    # correlator → validator
 
+# Reflection loop: validator can send control back to analyst
+def increment_retry(state: AgentState):
+    """Bumps retry_count before re-entering the analyst."""
+    return {"retry_count": state.get('retry_count', 0) + 1}
+
+workflow.add_node("retry_counter", increment_retry)
+
 workflow.add_conditional_edges(
     "validator",
     decide_to_notify,
-    {"notify": "notify", "end": "archiver"}
+    {"notify": "notify", "reflect": "retry_counter", "end": "archiver"}
 )
+
+# retry_counter → analyst (closes the reflection loop)
+workflow.add_edge("retry_counter", "analyst")
 
 workflow.add_edge("notify",   "archiver")
 workflow.add_edge("archiver", END)
