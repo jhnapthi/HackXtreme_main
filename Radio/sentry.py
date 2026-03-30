@@ -383,44 +383,68 @@ def validator_node(state: AgentState):
 
 
 def notify_node(state: AgentState):
-    """Sends a rich formatted Telegram alert with mode icon, severity, and convergence warning."""
+    """Stores the alert in a shared JSON file (alerts.json) so the web dashboard displays it.
+    Also prints a formatted summary to the console.
+    """
     mode = state.get('sentry_mode', 'general')
     mode_icons   = {"epi": "🩺", "eco": "🌪️", "supply": "♻️", "general": "🚨"}
     severity_bars = {1: "🟢", 2: "🟡", 3: "🟠", 4: "🔴", 5: "🔴🔴"}
 
-    icon      = mode_icons.get(mode, "🚨")
-    severity  = state.get('severity_level', 3)
+    icon       = mode_icons.get(mode, "🚨")
+    severity   = state.get('severity_level', 3)
     confidence = state.get('confidence_score', 0.5)
-    bar       = severity_bars.get(severity, "🔴")
+    bar        = severity_bars.get(severity, "🔴")
     convergence = state.get('convergence_warning', '')
 
+    # Build the alert object for the web dashboard
+    import json as _json
+    from datetime import datetime as _dt
+
+    alert_obj = {
+        "id": str(uuid.uuid4()),
+        "headline": state['news_item'],
+        "mode": mode,
+        "severity": severity,
+        "confidence": round(confidence, 2),
+        "is_verified": state.get('is_verified', False),
+        "source": "Live Agent Pipeline",
+        "timestamp": _dt.utcnow().isoformat(),
+        "analysis": state.get('threat_analysis', '')[:800],
+        "convergence_warning": convergence if convergence else None,
+    }
+
+    # Append to alerts.json (shared with the web API)
+    alerts_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "alerts.json")
+    try:
+        existing = []
+        if os.path.exists(alerts_file):
+            with open(alerts_file, "r", encoding="utf-8") as f:
+                existing = _json.load(f)
+        existing.insert(0, alert_obj)
+        # Keep last 100 alerts
+        existing = existing[:100]
+        with open(alerts_file, "w", encoding="utf-8") as f:
+            _json.dump(existing, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"[Notify] Failed to write alerts.json: {e}")
+
+    # Console summary
     msg = (
-        f"{icon} GLOBALSENTRY ALERT {icon}\n"
+        f"\n{icon} GLOBALSENTRY ALERT {icon}\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"Mode     : {mode.upper()}-SENTRY\n"
         f"Severity : {bar} {severity}/5\n"
         f"Confidence: {confidence:.0%}\n\n"
         f"📰 EVENT:\n{state['news_item']}\n\n"
-        f"🔍 ANALYSIS:\n{state['threat_analysis'][:500]}...\n\n"
+        f"🔍 ANALYSIS:\n{state['threat_analysis'][:300]}...\n"
     )
     if convergence:
-        msg += f"\n{convergence[:300]}\n\n"
+        msg += f"\n{convergence[:300]}\n"
 
-    msg += f"✅ VERIFIED BY:\n{state['verification_results'][:200]}..."
+    print(f"[Notify] Alert saved to alerts.json → visible on web dashboard")
+    print(msg)
 
-    print("[Notify] Sending alert...")
-    token   = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
-    if token and chat_id:
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        try:
-            requests.post(url, json={"chat_id": chat_id, "text": msg})
-        except Exception as e:
-            print(f"[Notify] Telegram failed: {e}")
-    else:
-        print(f"[Notify] (No Telegram) Alert:\n{msg}")
-
-    return {"logs": state.get('logs', []) + ["Notification sent."]}
+    return {"logs": state.get('logs', []) + ["Alert saved to web dashboard."]}
 
 
 def archiver_node(state: AgentState):
@@ -452,7 +476,7 @@ def archiver_node(state: AgentState):
 def decide_to_analyze(state: AgentState) -> Literal["analyze", "end"]:
     """Proceed only if flagged as a threat AND relevant to the stakeholder."""
     relevance  = state.get('relevance_score', 0.5)
-    threshold  = float(os.getenv("ALERT_THRESHOLD", "0.4"))
+    threshold  = float(os.getenv("ALERT_THRESHOLD", "0.15"))
     if state['is_threat'] and relevance >= threshold:
         return "analyze"
     return "end"
