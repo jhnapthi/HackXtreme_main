@@ -6,20 +6,20 @@
 /* ─── CSS Variables / Design Tokens ──────────────────────────────────── */
 :root {
   /* Base colors */
-  --bg-primary:   #080d1a;
-  --bg-secondary: #0d1428;
-  --bg-card:      rgba(255,255,255,0.04);
-  --bg-card-hover:rgba(255,255,255,0.07);
-  --bg-glass:     rgba(13,20,40,0.7);
+  --bg-primary:   #f5f5f7;
+  --bg-secondary: #ffffff;
+  --bg-card:      rgba(0,0,0,0.04);
+  --bg-card-hover:rgba(0,0,0,0.07);
+  --bg-glass:     rgba(245,245,247,0.7);
 
   /* Text */
-  --text-primary:   #f0f4ff;
-  --text-secondary: #8b9ab8;
-  --text-muted:     #4a5578;
+  --text-primary:   #1d1d1f;
+  --text-secondary: #424245;
+  --text-muted:     #86868b;
 
   /* Borders */
-  --border-subtle:  rgba(255,255,255,0.06);
-  --border-medium:  rgba(255,255,255,0.12);
+  --border-subtle:  rgba(0,0,0,0.08);
+  --border-medium:  rgba(0,0,0,0.15);
 
   /* Sentry Colors */
   --epi:          #f43f5e;
@@ -162,7 +162,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
   position: fixed;
   top: 0; left: 0; right: 0;
   z-index: 1000;
-  background: rgba(8,13,26,0.85);
+  background: rgba(245,245,247,0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border-subtle);
@@ -237,8 +237,8 @@ h1, h2, h3, h4 { line-height: 1.2; }
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+    linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px);
   background-size: 60px 60px;
   animation: grid-drift 30s linear infinite;
 }
@@ -436,6 +436,32 @@ h1, h2, h3, h4 { line-height: 1.2; }
 .btn-pillar-supply { background: var(--supply-bg); color: var(--supply); border: 1px solid var(--supply); }
 .btn-pillar-supply:hover { background: var(--supply); color: var(--bg-primary); }
 .btn-pillar:active { transform: scale(0.96); }
+
+/* ─── INFOGRAPHICS SECTION ─────────────────────────────────────────── */
+.infographics-section {
+  padding: var(--section-pad) 24px;
+  background: linear-gradient(180deg, var(--bg-primary) 0%, var(--mode-bg) 100%);
+  max-width: 1400px;
+  margin: 0 auto;
+  border-radius: 20px;
+  transition: background 0.5s ease;
+}
+.infographics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
+}
+.infra-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--card-radius);
+  padding: 24px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+  transition: all 0.3s ease;
+}
+.infra-card:hover { border-color: var(--mode-color); transform: translateY(-4px); box-shadow: 0 8px 24px var(--mode-glow); }
+.infra-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 20px; line-height: 1.4; text-align: center; }
+.chart-container { position: relative; height: 250px; width: 100%; }
 
 /* ─── DASHBOARD SECTION ──────────────────────────────────────────── */
 .dashboard-section {
@@ -896,7 +922,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.7);
+  background: rgba(0,0,0,0.4);
   backdrop-filter: blur(6px);
   z-index: 2000;
   display: flex;
@@ -917,7 +943,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
   max-height: 80vh;
   overflow-y: auto;
   animation: modal-in 0.3s cubic-bezier(0.34,1.56,0.64,1);
-  box-shadow: 0 40px 80px rgba(0,0,0,0.5);
+  box-shadow: 0 40px 80px rgba(0,0,0,0.15);
 }
 @keyframes modal-in {
   from { transform: scale(0.9) translateY(20px); opacity: 0; }
@@ -972,7 +998,7 @@ h1, h2, h3, h4 { line-height: 1.2; }
   color: var(--text-primary);
   animation: toast-in 0.3s ease;
   max-width: 320px;
-  box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.1);
 }
 .toast.toast-success { border-left: 3px solid #22c55e; }
 .toast.toast-error   { border-left: 3px solid var(--epi); }

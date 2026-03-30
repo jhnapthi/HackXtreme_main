@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
@@ -188,6 +189,38 @@
         </div>
       </div>
 
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════
+       GLOBAL THREAT LANDSCAPE (INFOGRAPHICS)
+  ═══════════════════════════════════════════ -->
+  <section class="infographics-section" id="infographics">
+    <div class="section-header">
+      <div class="section-label">Data Visualization</div>
+      <h2 class="section-title">Global Threat Landscape</h2>
+      <p class="section-subtitle">Live analytics generated from aggregated sentry data models.</p>
+    </div>
+
+    <div class="infographics-grid">
+      <div class="infra-card" id="infra-epi">
+        <h3 class="infra-title">Epi-Sentry:<br/>Estimated R₀ Trajectory</h3>
+        <div class="chart-container">
+          <canvas id="chartEpi"></canvas>
+        </div>
+      </div>
+      <div class="infra-card" id="infra-eco">
+        <h3 class="infra-title">Eco-Sentry:<br/>Climate Disaster Index</h3>
+        <div class="chart-container">
+          <canvas id="chartEco"></canvas>
+        </div>
+      </div>
+      <div class="infra-card" id="infra-supply">
+        <h3 class="infra-title">Supply-Sentry:<br/>Disruption Factors</h3>
+        <div class="chart-container">
+          <canvas id="chartSupply"></canvas>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -435,7 +468,7 @@
       </div>
     </div>
     <div class="footer-bottom">
-      <span>© 2025 GlobalSentry — HackXtreme Submission</span>
+      <span>© 2026 GlobalSentry — HackXtreme Submission</span>
       <span class="footer-bottom-right">Built with ❤️ for a safer world</span>
     </div>
   </footer>
