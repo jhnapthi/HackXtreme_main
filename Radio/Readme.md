@@ -1,55 +1,116 @@
-# Neural Sentry
+# GlobalSentry
 
-Neural Sentry is an intelligent, automated threat detection and news monitoring agent. It is designed to ingest real-time information (e.g., RSS feeds), analyze it for personal relevance and potential danger using Google Gemini models, verify findings via web search, and alert the user through Telegram.
+**GlobalSentry** is a unified, multi-agent RAG threat intelligence platform — a hackathon project for HackExtreme.
 
-## Architecture & Key Files
+It monitors three global threat domains in real-time, cross-references them for cascading risks, and alerts stakeholders before crises hit mainstream news.
 
-### Core Logic
-*   **`sentry.py`**: Defines the `LangGraph` state machine (`sentry_app`). This is the brain of the operation, containing the node definitions (`profiler_node`, `triage_node`, `analyst_node`, etc.) and the conditional routing logic.
-*   **`ingest.py`**: The main entry point for the continuous monitoring daemon. It polls RSS feeds defined in configuration, deduplicates entries using SQLite, and triggers the `sentry_app` workflow for new items.
-*   **`user_profile.json`**: A JSON file defining the user's persona (location, interests, job role) used by the Profiler node to determine relevance.
+---
 
-The system employs a multi-agent **Retrieval-Augmented Generation (RAG)** architecture using `LangGraph` to orchestrate distinct roles:
-*   **Profiler:** Filters news based on the user's personal context (location, job, interests).
-*   **Retriever:** Fetches historical context from a local vector database (Qdrant) as part of the RAG retrieval phase.
-*   **Triage (Agent A):** A fast, lightweight model (Gemini 1.5 Flash) to quickly flag potential threats.
-*   **Analyst (Agent B):** A capability-focused model (Gemini 1.5 Pro) for deep threat analysis and risk assessment.
-*   **Validator (Agent C):** Verifies claims using web search tools.
-*   **Notifier:** Sends alerts via Telegram for verified threats.
-*   **Archiver:** Stores relevant events in long-term memory (Qdrant) to support future RAG retrieval and context.
+## 🧠 Architecture — LangGraph Multi-Agent Pipeline
 
-### Data & Configuration
-*   **`requirements.txt`**: Python dependencies (e.g., `langgraph`, `langchain-google-genai`, `qdrant-client`).
-*   **`.env`**: Configuration for API keys (Google, Telegram) and operational settings (Poll intervals, RSS feeds). **Note:** Use `.env.template` as a reference.
-*   **`qdrant_data/`**: Directory storing the local Qdrant vector database files.
-*   **`ingestion_history.db`**: SQLite database used by `ingest.py` to track processed RSS item hashes and prevent duplicate processing.
+```
+Profiler → Triage → [Retriever → Analyst → Correlator → Validator] → Notify → Archiver
+```
 
-## Setup & Development
+| Node | Role | Description |
+|---|---|---|
+| **Profiler** | The Personalizer | Scores relevance of the event to the stakeholder profile |
+| **Triage** | The Sentry | Fast, mode-aware YES/NO threat classifier (Agent A) |
+| **Retriever** | The Historian | Fetches same-mode historical context from Qdrant |
+| **Analyst** | The Brain | Deep domain-expert analysis with severity + confidence score (Agent B) |
+| **Correlator** | 🧠 The Neural Moat | Queries Qdrant for **cross-mode** correlations — detects cascading threats |
+| **Validator** | The Fact-Checker | Verifies claims via live DuckDuckGo search (Agent C) |
+| **Notifier** | The Messenger | Sends formatted Telegram alert |
+| **Archiver** | The Memory | Stores event in Qdrant with mode + severity metadata |
+
+---
+
+## 🌍 Three Sentry Modes (SDG Aligned)
+
+| Mode | SDG | Focus |
+|---|---|---|
+| 🩺 **Epi-Sentry** | SDG 3 | Disease outbreaks, epidemics, public health emergencies |
+| 🌪️ **Eco-Sentry** | SDG 11 / 13 | Climate disasters, extreme weather, ecological collapse |
+| ♻️ **Supply-Sentry** | SDG 12 | Supply chain disruptions, ESG violations, resource shortages |
+
+---
+
+## 🔑 Key Files
+
+| File | Purpose |
+|---|---|
+| `sentry.py` | Core LangGraph engine — all 8 nodes + graph wiring |
+| `ingest.py` | Mode-aware polling daemon — reads RSS feeds, deduplicates, triggers pipeline |
+| `seed_data.py` | Pre-loads 18 demo events into Qdrant for Retriever + Correlator |
+| `user_profile.json` | Stakeholder profile — region, role, sentry mode, alert threshold |
+| `.env` | API keys + Ollama config + per-mode RSS feeds |
+
+---
+
+## 🚀 Setup
 
 ### Prerequisites
-*   Python 3.9+
-*   Google Gemini API Key
-*   Telegram Bot Token & Chat ID
+- Python 3.9+
+- [Ollama](https://ollama.ai/) running locally with a model pulled (e.g. `llama3`)
+- Telegram Bot token (optional, for alerts)
 
-### Installation
-1.  Install dependencies:
-    ```bash
-    pip install -r requirements.txt
-    ```
-2.  Configure environment:
-    ```bash
-    cp .env.template .env
-    # Edit .env with your API keys and RSS feeds
-    ```
-3.  Customize Profile:
-    *   Edit `user_profile.json` to match the target user's details.
+### 1. Pull Ollama model
+```bash
+ollama pull llama3
+```
 
-### Running the System
-*   **Continuous Monitoring:**
-    ```bash
-    python ingest.py
-    ```
-*   **Manual Testing:**
-    ```bash
-    python test_sentry.py
-    ```
+### 2. Install dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Configure environment
+```bash
+cp .env.template .env
+# Edit .env — set SENTRY_MODE, RSS feeds, Telegram token
+```
+
+### 4. Customise stakeholder profile
+Edit `user_profile.json`:
+```json
+{
+  "stakeholder_type": "government_planner",
+  "region_of_interest": "South Asia",
+  "active_sentry_mode": "eco",
+  "alert_threshold": 0.5
+}
+```
+
+### 5. Seed demo data (run once)
+```bash
+python seed_data.py
+```
+
+### 6. Run the monitoring daemon
+```bash
+python ingest.py
+```
+
+---
+
+## 🎮 Demo Inputs (Hackathon)
+
+Use these headlines to guarantee a triggered alert during the live demo:
+
+| Mode | Headline |
+|---|---|
+| 🩺 Epi | `New respiratory illness cluster confirmed in Southeast Asia — WHO monitoring` |
+| 🌪️ Eco | `Magnitude 7.1 earthquake strikes coastal Peru — tsunami watch issued` |
+| ♻️ Supply | `Major semiconductor factory halts operations — global chip shortage feared` |
+
+---
+
+## ⚙️ LLM & Embedding Configuration
+
+GlobalSentry runs **100% locally** — no cloud AI costs:
+
+| Component | Default | Config |
+|---|---|---|
+| LLM (all agents) | `llama3` via Ollama | `OLLAMA_MODEL` in `.env` |
+| Embeddings | `all-MiniLM-L6-v2` (sentence-transformers) | `EMBEDDING_MODEL` in `.env` |
+| Vector DB | Qdrant (local file) | `./qdrant_data/` |

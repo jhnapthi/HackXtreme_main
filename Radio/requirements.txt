@@ -1,13 +1,19 @@
+# Core LangGraph + LangChain
 langgraph
-langchain-google-genai
-python-dotenv
-requests
-google-search-results
 langchain
-qdrant-client
 langchain-community
+langchain-ollama
+
+# Local embeddings (no API key needed)
 sentence-transformers
+
+# Vector DB
+qdrant-client
+
+# Search & ingestion
 duckduckgo-search
 feedparser
-langchain-openai
-langchain-ollama
+
+# Utilities
+python-dotenv
+requests
