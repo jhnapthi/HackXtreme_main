@@ -163,6 +163,39 @@ function buildAlertCard(alert, index) {
           <span class="alert-source">${escapeHtml(alert.source)}</span>
           <span class="alert-time">${timeAgo}</span>
         </div>
+      </div>
+    `;
+  } else {
+    // Agent-processed alert — full card with severity, analysis, and badges
+    const verifiedBadge = alert.is_verified
+      ? '<span class="badge badge-verified">✅ VERIFIED</span>'
+      : '<span class="badge badge-unverified">⏳ UNVERIFIED</span>';
+
+    const convergenceHtml = alert.convergence_warning
+      ? `<div class="alert-convergence">🧠 ${escapeHtml(alert.convergence_warning)}</div>`
+      : '';
+
+    card.innerHTML = `
+      <div class="alert-card-top">
+        <div class="alert-headline">${escapeHtml(alert.headline)}</div>
+        <div class="alert-badges">
+          <span class="badge ${modeBadgeClass}">${alert.mode.toUpperCase()}</span>
+          <span class="badge badge-agent">🤖 AI AGENT</span>
+          ${verifiedBadge}
+        </div>
+      </div>
+      <div class="alert-severity-row">
+        <div class="severity-dots">${buildSeverityDots(alert.severity, alert.mode)}</div>
+        <span class="alert-confidence">${Math.round((alert.confidence || 0) * 100)}% confidence</span>
+      </div>
+      <div class="alert-analysis">${escapeHtml((alert.analysis || '').substring(0, 300))}</div>
+      ${convergenceHtml}
+      <div class="alert-card-bottom">
+        <div class="alert-meta">
+          <span class="alert-source">${escapeHtml(alert.source || 'Agent Pipeline')}</span>
+          <span class="alert-time">${timeAgo}</span>
+        </div>
+      </div>
     `;
   }
 
@@ -226,19 +259,10 @@ async function pollSystemStatus() {
 function updateAutonomousUI(currentAnalysis) {
   const display = document.getElementById('current-analysis-display');
   const indText = document.getElementById('active-node-text');
-  const trackerPill = document.getElementById('data-tracker-pill');
-  
-  // reset pipeline visualizer
-  document.querySelectorAll('.pipeline-node').forEach(n => {
-    n.classList.remove('active', 'done');
-  });
 
   if (!currentAnalysis) {
     if (display) display.innerHTML = '<em>Waiting for next signal...</em>';
     if (indText) indText.textContent = 'Idling (Waiting 20s)';
-    const pText = document.getElementById('pipeline-status-text');
-    if (pText) pText.textContent = "Pipeline is currently waiting to scan next threat data...";
-    if (trackerPill) trackerPill.style.opacity = '0';
     return;
   }
 
@@ -258,56 +282,6 @@ function updateAutonomousUI(currentAnalysis) {
   
   const activeLabel = nodeNames[currentAnalysis.active_node] || currentAnalysis.active_node;
   if (indText) indText.textContent = `Running: ${activeLabel}...`;
-  
-  const pText = document.getElementById('pipeline-status-text');
-  if (pText) pText.textContent = `Autonomous API streaming active: ${activeLabel}...`;
-
-  // highlight active pipeline node
-  let isDonePhase = true;
-  const nodes = ['profiler', 'triage', 'retriever', 'analyst', 'correlator', 'validator', 'retry', 'notify', 'archiver'];
-  const nodeIds = {
-     'profiler': 'pnode-profiler',
-     'triage': 'pnode-triage',
-     'retriever': 'pnode-retriever',
-     'analyst': 'pnode-analyst',
-     'correlator': 'pnode-correlator',
-     'validator': 'pnode-validator',
-     'retry': 'pnode-reflect',
-     'notify': 'pnode-notify',
-     'archiver': 'pnode-archive'
-  };
-
-  const currentID = nodeIds[currentAnalysis.active_node];
-  nodes.forEach(n => {
-    const elId = nodeIds[n];
-    if (!elId) return;
-    const el = document.getElementById(elId);
-    if (!el) return;
-    
-    if (elId === currentID) {
-      el.classList.add('active');
-      isDonePhase = false;
-      
-      // Update tracker pill position
-      if (trackerPill) {
-        trackerPill.textContent = currentAnalysis.headline;
-        trackerPill.style.opacity = '1';
-        
-        // Calculate offset (center pill over active node)
-        const containerEl = document.getElementById('pipeline-nodes');
-        const containerRect = containerEl.getBoundingClientRect();
-        const nodeRect = el.getBoundingClientRect();
-        
-        // Calculate the center X of the node relative to the container
-        const leftPos = (nodeRect.left - containerRect.left) + (nodeRect.width / 2);
-        
-        // Use transform for smooth animation: translate to node center minus 50% of pill width
-        trackerPill.style.transform = `translateX(${leftPos}px) translateX(-50%)`;
-      }
-    } else if (isDonePhase) {
-      el.classList.add('done');
-    }
-  });
 }
 
 // ─── Alert Modal ────────────────────────────────────────────────────────────
@@ -532,14 +506,60 @@ document.addEventListener('DOMContentLoaded', () => {
   initRevealObserver();
   startStatusClock();
   updateMiniStats();
+  loadThreatCounts();   // Populate pillar cards with real threat data
 
   // Start recurring polling
   setInterval(pollSystemStatus, 2000);
   setInterval(() => loadAlerts(state.activeMode), 15000);
+  setInterval(loadThreatCounts, 10000);  // Refresh threat counts every 10s
 
   // Init Infographics
   initCharts();
 });
+
+
+// ─── Threat Counts & Consequences for Pillar Cards ──────────────────────────
+async function loadThreatCounts() {
+  try {
+    // Fetch total counts
+    const countsResp = await fetch(`${API_BASE}/threat-counts`);
+    const counts = await countsResp.json();
+
+    for (const mode of ['epi', 'eco', 'supply']) {
+      const el = document.getElementById(`${mode}-threat-count`);
+      if (el && counts[mode]) {
+        el.textContent = counts[mode].total;
+      }
+    }
+
+    // Fetch top headlines for each mode as "consequences"
+    for (const mode of ['epi', 'eco', 'supply']) {
+      const listEl = document.getElementById(`${mode}-consequences-list`);
+      if (!listEl) continue;
+
+      try {
+        const feedResp = await fetch(`${API_BASE}/feed/${mode}?page=1&per_page=20`);
+        const feedData = await feedResp.json();
+        const items = feedData.headlines || feedData.items || [];
+
+        if (items.length === 0) {
+          listEl.innerHTML = '<li style="opacity:0.5">Scanning feeds...</li>';
+          continue;
+        }
+
+        // Duplicate items for infinite scroll effect
+        const displayItems = [...items, ...items];
+        listEl.innerHTML = displayItems
+          .map(item => `<li>${escapeHtml(item.headline || item.title || '')}</li>`)
+          .join('');
+      } catch (e) {
+        console.warn(`[Ticker] Failed to load ${mode} feed`, e);
+      }
+    }
+  } catch (e) {
+    console.warn('[ThreatCounts] API error', e);
+  }
+}
   
   // ─── Chart.js Infographics ────────────────────────────────────────────────
   let charts = {};

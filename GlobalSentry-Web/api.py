@@ -74,25 +74,17 @@ USER_PROFILE = {
 
 # ─── India-Focused RSS Feed Configuration ────────────────────────────────────
 
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 FEEDS = {
     "epi": [
-        "https://health.economictimes.indiatimes.com/rss/topstories",
-        "https://timesofindia.indiatimes.com/rssfeeds/3908999.cms",
-        "https://indianexpress.com/section/lifestyle/health/feed/",
+        os.path.join(_BASE_DIR, "epi_feed.xml"),
     ],
     "eco": [
-        "https://timesofindia.indiatimes.com/rssfeeds/2647163.cms",
-        "https://www.ndtv.com/rss/india",
-        "https://indianexpress.com/section/india/feed/",
-        "https://reliefweb.int/updates/rss.xml?country=119",
+        os.path.join(_BASE_DIR, "eco_feed.xml"),
     ],
     "supply": [
-        # ── Original live feeds (uncomment when needed) ──
-        # "https://economictimes.indiatimes.com/rssfeeds/1200853.cms",
-        # "https://www.livemint.com/rss/companies",
-        # "https://indianexpress.com/section/business/feed/",
-        # ── Local simulated feed for hackathon demo ──
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "supply_feed.xml"),
+        os.path.join(_BASE_DIR, "supply_feed.xml"),
     ],
 }
 
@@ -604,7 +596,12 @@ def load_live_alerts() -> list:
     try:
         if os.path.exists(ALERTS_JSON_PATH):
             with open(ALERTS_JSON_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
+                alerts = json.load(f)
+            # Ensure every agent-produced alert has is_raw_feed=False
+            for a in alerts:
+                if "is_raw_feed" not in a:
+                    a["is_raw_feed"] = False
+            return alerts
     except Exception as e:
         print(f"[API] Failed to read alerts.json: {e}")
     return []
@@ -639,9 +636,12 @@ def run_real_agent_stream(headline: str, mode: str):
                 print(f"[API] Stream active node: {node_name}")
                 if _state["current_analysis"] and _state["current_analysis"]["headline"] == headline:
                     _state["current_analysis"]["active_node"] = node_name
-                    
+
+        print(f"[API] ✅ Agent stream completed for: {headline[:60]}")
     except Exception as e:
+        import traceback
         print(f"[API] Agent streaming failed: {e}")
+        traceback.print_exc()
     finally:
         os.chdir(original_cwd)
 
@@ -780,6 +780,23 @@ def get_raw_feed(mode: str, page: int = 1, per_page: int = 15):
         "has_next": page < total_pages,
         "mode": mode,
     }
+
+
+@app.get("/api/threat-counts")
+def get_threat_counts():
+    """Returns the total number of threat items per mode from the XML feeds,
+    plus how many have been processed by the agent so far."""
+    counts = {}
+    processed_alerts = load_live_alerts() + _state["triggered_analyses"]
+    for mode in ("epi", "eco", "supply"):
+        feed_items = get_cached_rss(mode)
+        processed_count = len([a for a in processed_alerts if a.get("mode") == mode and not a.get("is_raw_feed")])
+        counts[mode] = {
+            "total": len(feed_items),
+            "processed": processed_count,
+            "pending": len(feed_items) - processed_count,
+        }
+    return counts
 
 
 @app.get("/api/globe-threats")
@@ -994,7 +1011,7 @@ async def autonomous_agent_loop():
     while True:
         try:
             for mode in ("epi", "eco", "supply"):
-                headlines = fetch_rss_alerts(mode)
+                headlines = get_cached_rss(mode)
                 headlines = _prioritize_headlines(headlines)
                 
                 for feed_item in headlines:
