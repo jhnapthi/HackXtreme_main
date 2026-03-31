@@ -109,9 +109,10 @@ async function loadAlerts(mode) {
 
   if (USE_API) {
     try {
-      const resp = await fetch(`${API_BASE}/alerts?mode=${mode}&limit=15`);
+      const resp = await fetch(`${API_BASE}/alerts?mode=${mode}&limit=50`);
       const data = await resp.json();
-      alerts = data.alerts || [];
+      // Only show agent-processed alerts — NOT raw RSS feeds
+      alerts = (data.alerts || []).filter(a => a.is_raw_feed !== true);
     } catch (e) {
       console.warn('API error', e);
     }

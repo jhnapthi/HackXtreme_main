@@ -172,12 +172,15 @@ async function pollStatus() {
 
 async function fetchAccepted() {
     try {
-        const res = await fetch('http://localhost:8000/api/alerts?limit=15');
+        const res = await fetch('http://localhost:8000/api/alerts?limit=50');
         if (!res.ok) return;
         const data = await res.json();
         const container = document.getElementById('list-accepted');
         
-        [...data.alerts].reverse().forEach(alert => {
+        // Only show agent-processed alerts — NOT raw RSS feeds
+        const agentAlerts = data.alerts.filter(a => a.is_raw_feed !== true);
+        
+        [...agentAlerts].reverse().forEach(alert => {
             const h = alert.headline;
             if (!seenAccepted.has(h)) {
                 addToSetLimited(seenAccepted, h);
@@ -189,7 +192,7 @@ async function fetchAccepted() {
                 }
             }
         });
-        document.getElementById('count-accepted').innerText = data.total;
+        document.getElementById('count-accepted').innerText = seenAccepted.size;
     } catch(e) {
         console.error("Conveyor Alerts Error:", e);
     }

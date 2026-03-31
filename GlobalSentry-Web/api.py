@@ -1007,70 +1007,84 @@ async def autonomous_agent_loop():
     ]
 
     pipeline_nodes = ["profiler", "triage", "retriever", "analyst", "correlator", "validator", "notify", "archiver"]
+    BATCH_SIZE = 5  # Process 5 headlines per mode before rotating
         
     while True:
         try:
+            # Build per-mode queues of unprocessed headlines
+            queues = {}
             for mode in ("epi", "eco", "supply"):
                 headlines = get_cached_rss(mode)
                 headlines = _prioritize_headlines(headlines)
-                
-                for feed_item in headlines:
-                    hl = feed_item["headline"]
-                    if hl in _processed_headlines:
+                queues[mode] = [h for h in headlines if h["headline"] not in _processed_headlines]
+
+            # Round-robin: take BATCH_SIZE from each mode, repeat until all exhausted
+            any_remaining = True
+            while any_remaining:
+                any_remaining = False
+                for mode in ("epi", "eco", "supply"):
+                    batch = queues[mode][:BATCH_SIZE]
+                    queues[mode] = queues[mode][BATCH_SIZE:]
+                    if not batch:
                         continue
+                    any_remaining = True
 
-                    print(f"\n[API] \U0001f575\ufe0f Auto-analyzing: {hl[:70]}...")
+                    for feed_item in batch:
+                        hl = feed_item["headline"]
+                        if hl in _processed_headlines:
+                            continue
 
-                    if AGENT_AVAILABLE:
-                        # ── Real agent path ──
-                        _state["current_analysis"] = {"headline": hl, "mode": mode, "active_node": "profiler"}
-                        pre_alerts = len(load_live_alerts())
-                        await asyncio.to_thread(run_real_agent_stream, hl, mode)
-                        post_alerts = len(load_live_alerts())
-                        if post_alerts == pre_alerts:
-                            _state["recent_rejections"].insert(0, {"headline": hl, "mode": mode, "timestamp": datetime.utcnow().isoformat()})
-                            _state["recent_rejections"] = _state["recent_rejections"][:10]
-                    else:
-                        # ── Simulated analysis pipeline ──
-                        # Walk through each pipeline node with realistic timing
-                        for node in pipeline_nodes:
-                            _state["current_analysis"] = {"headline": hl, "mode": mode, "active_node": node}
-                            await asyncio.sleep(random.uniform(0.4, 1.2))  # simulate processing time
+                        print(f"\n[API] \U0001f575\ufe0f Auto-analyzing [{mode.upper()}]: {hl[:60]}...")
 
-                        severity = random.randint(2, 5)
-                        confidence = round(random.uniform(0.65, 0.95), 2)
-                        loc = random.choice(sa_locations)
+                        if AGENT_AVAILABLE:
+                            # ── Real agent path ──
+                            _state["current_analysis"] = {"headline": hl, "mode": mode, "active_node": "profiler"}
+                            pre_alerts = len(load_live_alerts())
+                            await asyncio.to_thread(run_real_agent_stream, hl, mode)
+                            post_alerts = len(load_live_alerts())
+                            if post_alerts == pre_alerts:
+                                _state["recent_rejections"].insert(0, {"headline": hl, "mode": mode, "timestamp": datetime.utcnow().isoformat()})
+                                _state["recent_rejections"] = _state["recent_rejections"][:10]
+                        else:
+                            # ── Simulated analysis pipeline ──
+                            for node in pipeline_nodes:
+                                _state["current_analysis"] = {"headline": hl, "mode": mode, "active_node": node}
+                                await asyncio.sleep(random.uniform(0.4, 1.2))
 
-                        mode_analyses = {
-                            "epi": f"Epidemiological triage complete. Symptom pattern cross-matched with {random.randint(3, 12)} historical outbreaks. R0 estimation: {round(random.uniform(1.2, 4.5), 1)}.",
-                            "eco": f"Geophysical risk model applied. Satellite imagery cross-referenced. Affected population zone: {random.randint(50, 500)}K residents.",
-                            "supply": f"Supply chain dependency graph queried. {random.randint(2, 8)} Tier-1 suppliers in impact zone. ESG registry cross-checked. Disruption probability: {random.randint(60, 95)}%.",
-                        }
+                            severity = random.randint(2, 5)
+                            confidence = round(random.uniform(0.65, 0.95), 2)
+                            loc = random.choice(sa_locations)
 
-                        new_alert = {
-                            "id": str(uuid.uuid4()),
-                            "headline": hl,
-                            "mode": mode,
-                            "severity": severity,
-                            "confidence": confidence,
-                            "is_verified": confidence > 0.75,
-                            "source": feed_item.get("source", "RSS Intelligence Feed"),
-                            "timestamp": datetime.utcnow().isoformat(),
-                            "analysis": mode_analyses[mode],
-                            "convergence_warning": "\u26a0\ufe0f CONVERGENCE DETECTED: Cross-mode pattern match found in memory." if random.random() > 0.7 else None,
-                            "lat": loc["lat"],
-                            "lng": loc["lng"],
-                            "location": loc["location"],
-                            "is_raw_feed": False,
-                        }
-                        _state["triggered_analyses"].insert(0, new_alert)
+                            mode_analyses = {
+                                "epi": f"Epidemiological triage complete. Symptom pattern cross-matched with {random.randint(3, 12)} historical outbreaks. R0 estimation: {round(random.uniform(1.2, 4.5), 1)}.",
+                                "eco": f"Geophysical risk model applied. Satellite imagery cross-referenced. Affected population zone: {random.randint(50, 500)}K residents.",
+                                "supply": f"Supply chain dependency graph queried. {random.randint(2, 8)} Tier-1 suppliers in impact zone. ESG registry cross-checked. Disruption probability: {random.randint(60, 95)}%.",
+                            }
 
-                    _processed_headlines.add(hl)
-                    _state["current_analysis"] = None
-                    print(f"[API] \u2705 Analysis complete for: {hl[:50]}...")
-                    
-                    # Pause between analyses (looks realistic)
-                    await asyncio.sleep(random.uniform(3, 6))
+                            new_alert = {
+                                "id": str(uuid.uuid4()),
+                                "headline": hl,
+                                "mode": mode,
+                                "severity": severity,
+                                "confidence": confidence,
+                                "is_verified": confidence > 0.75,
+                                "source": feed_item.get("source", "RSS Intelligence Feed"),
+                                "timestamp": datetime.utcnow().isoformat(),
+                                "analysis": mode_analyses[mode],
+                                "convergence_warning": "\u26a0\ufe0f CONVERGENCE DETECTED: Cross-mode pattern match found in memory." if random.random() > 0.7 else None,
+                                "lat": loc["lat"],
+                                "lng": loc["lng"],
+                                "location": loc["location"],
+                                "is_raw_feed": False,
+                            }
+                            _state["triggered_analyses"].insert(0, new_alert)
+
+                        _processed_headlines.add(hl)
+                        _state["current_analysis"] = None
+                        print(f"[API] \u2705 Analysis complete for: {hl[:50]}...")
+                        
+                        # Pause between analyses
+                        await asyncio.sleep(random.uniform(3, 6))
                         
         except Exception as e:
             print(f"[API] Error in autonomous loop: {e}")
